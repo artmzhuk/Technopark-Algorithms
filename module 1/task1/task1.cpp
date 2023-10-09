@@ -7,7 +7,7 @@
 
 bool CheckOnly1Bit(uint32_t x){
     uint8_t one_bit_counter = 0;
-    for(uint8_t i = 0; i < 32; ++i){
+    for(uint8_t i = 0; i < 32 && one_bit_counter <= 2; ++i){
         if(x & (1 << i)){
             one_bit_counter++;
         }
