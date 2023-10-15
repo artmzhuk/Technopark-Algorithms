@@ -91,6 +91,7 @@ void run(std::istream &in, std::ostream &out) {
         }
     }
     out << color_part_length;
+    delete[] nodes;
 }
 
 int main() {
