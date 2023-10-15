@@ -9,3 +9,5 @@ add_executable(task2
         "module 1/task2/task2.cpp")
 add_executable(task3
         "module 1/task3/task3.cpp")
+add_executable(task4
+        "module 1/task4/task4.cpp")
