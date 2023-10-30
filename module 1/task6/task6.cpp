@@ -12,13 +12,13 @@ struct DefaultComparator {
     }
 };
 
-template<class T>
-long long median_idx(T *arr, long long idx_a, long long idx_b, long long idx_c) { //bubblesort for 3 elems
-    if ((arr[idx_a] <= arr[idx_b]) && (arr[idx_b] <= arr[idx_c])) return idx_b;
-    if ((arr[idx_a] <= arr[idx_c]) && (arr[idx_c] <= arr[idx_b])) return idx_c;
-    if ((arr[idx_b] <= arr[idx_a]) && (arr[idx_a] <= arr[idx_c])) return idx_a;
-    if ((arr[idx_b] <= arr[idx_c]) && (arr[idx_c] <= arr[idx_a])) return idx_c;
-    if ((arr[idx_c] <= arr[idx_a]) && (arr[idx_a] <= arr[idx_b])) return idx_a;
+template<class T, typename Comp = DefaultComparator<T>>
+long long median_idx(T *arr, long long idx_a, long long idx_b, long long idx_c, Comp comp = Comp()) { //bubblesort for 3 elems
+    if (!(comp(arr[idx_b], arr[idx_a])) && !(comp(arr[idx_c], arr[idx_b]))) return idx_b;
+    if (!(comp(arr[idx_c], arr[idx_a])) && !(comp(arr[idx_b], arr[idx_c]))) return idx_c;
+    if (!(comp(arr[idx_a], arr[idx_b])) && !(comp(arr[idx_c], arr[idx_a]))) return idx_a;
+    if (!(comp(arr[idx_c], arr[idx_b])) && !(comp(arr[idx_a], arr[idx_c]))) return idx_c;
+    if (!(comp(arr[idx_a], arr[idx_c])) && !(comp(arr[idx_b], arr[idx_a]))) return idx_a;
     return idx_b;
 }
 
