@@ -1,5 +1,6 @@
 #include <iostream>
 #include <string>
+#include <cstdint>
 
 size_t str_hash(const std::string &data) {
     size_t hash = 0;
@@ -27,33 +28,93 @@ struct Hash<int> {
 
 template<typename Key, typename Value, typename Hasher=Hash<Key>>
 class HashTable {
+private:
     struct Node {
-        Node(const Key &key, const Value &value, int status) : key(key), value(value), status(status) {}
+        Node(const Key &key, const Value &value) : key(key), value(value), status(2) {}
 
         Node() {
             status = 0;
         }
 
-        int status; //0-empty 1-deleted 2--occupied
+        uint8_t status; // 0-empty 1-deleted 2-occupied
         Key key;
         Value value;
     };
 
-public:
     Node *arr;
     size_t capacity;
     size_t count;
     Hasher hasher = Hasher();
 
+    void rehash() {
+        Node *old_arr = arr;
+        size_t old_capacity = capacity;
+        capacity *= 2;
+        arr = new Node[capacity];
+        for (size_t i = 0; i < old_capacity; ++i) {
+            if (old_arr[i].status == 2) {
+                size_t hash = hasher(old_arr[i].key);
+                for (size_t j = 0;; ++j) {
+                    hash = (hash + j*j) % capacity;
+                    if (arr[hash].status == 0) {
+                        arr[hash].status = 2;
+                        arr[hash].key = old_arr[i].key;
+                        arr[hash].value = old_arr[i].value;
+                        break;
+                    }
+                }
+            }
+        }
+        delete[] old_arr;
+    }
+
+public:
     HashTable() {
         arr = new Node[8];
         capacity = 8;
         count = 0;
     }
 
+    virtual ~HashTable() {
+        delete[] arr;
+    }
+
+    HashTable(HashTable &table) {
+        capacity = table.capacity;
+        count = table.count;
+        hasher = table.hasher;
+        arr = new Node[capacity];
+        for (size_t i = 0; i < capacity; ++i) {
+            arr[i].status = table.arr[i].status;
+            if (arr[i].status == 2) {
+                arr[i].key = table.arr[i].key;
+                arr[i].value = table.arr[i].value;
+            }
+        }
+    }
+
+    HashTable &operator=(const HashTable &table) {
+        if (this != &table) {
+            delete[] arr;
+            capacity = table.capacity;
+            count = table.count;
+            hasher = table.hasher;
+            arr = new Node[capacity];
+            for (size_t i = 0; i < capacity; ++i) {
+                arr[i].status = table.arr[i].status;
+                if (arr[i].status == 2) {
+                    arr[i].key = table.arr[i].key;
+                    arr[i].value = table.arr[i].value;
+                }
+            }
+        }
+        return *this;
+    }
+
     bool find(const Key &key) {
-        for (size_t i = 0;;++i){
-            size_t hash = (hasher(key) + i) % capacity;
+        size_t hash = hasher(key);
+        for (size_t i = 0;; ++i) {
+            hash = (hash + i*i) % capacity;
             if (arr[hash].status == 0) {
                 return false;
             } else if (arr[hash].status == 2 && arr[hash].key == key) {
@@ -62,16 +123,16 @@ public:
         }
     }
 
-    bool insert(const Key& key, const Value& value){
-        if(find(key)){
+    bool insert(const Key &key, const Value &value) {
+        if (find(key)) {
             return false;
         }
-        if(count / 3 * 4 >= capacity){
+        if ((count / 3) * 4 >= capacity) {
             rehash();
         }
-
-        for (size_t i = 0;;++i){
-            size_t hash = (hasher(key) + i) % capacity;
+        size_t hash = hasher(key);
+        for (size_t i = 0;; ++i) {
+            hash = (hash + i*i) % capacity;
             if (arr[hash].status == 0 || arr[hash].status == 1) {
                 arr[hash].status = 2;
                 arr[hash].key = key;
@@ -80,54 +141,30 @@ public:
                 return true;
             }
         }
-
     }
 
-    bool erase(const Key& key){
-        if(!find(key)){
+    bool erase(const Key &key) {
+        if (!find(key)) {
             return false;
         }
-        for (size_t i = 0;;++i){
-            size_t hash = (hasher(key) + i ) % capacity;
+        size_t hash = hasher(key);
+        for (size_t i = 0;; ++i) {
+            hash = (hash + i*i) % capacity;
             if (arr[hash].status == 2 && arr[hash].key == key) {
                 arr[hash].status = 1;
-                count--;
                 return true;
             }
         }
     }
-
-    void rehash(){
-        Node *newarr = new Node[capacity*2];
-        for(size_t i = 0; i < capacity; ++i){
-            if(arr[i].status == 2){
-                size_t hash = hasher(arr[i].key)%(capacity*2);
-                newarr[hash].key = arr[i].key;
-                newarr[hash].value = arr[i].value;
-                newarr[hash].status = 2;
-            }
-
-        }
-        delete[] arr;
-        arr = newarr;
-        capacity *= 2;
-    }
 };
 
 void run(std::istream &in, std::ostream &out) {
-    HashTable<std::string, int> table;
-
-    for(int i = 0; i < 25; ++i){
-        std::string a = "d" + std::to_string(i);
-        table.insert(a, i);
-    }
-
     HashTable<std::string, int> ht;
     char command = '\0';
     std::string value;
-    while(std::cin >> command >> value) {
+    while (in >> command >> value) {
         bool result = false;
-        switch(command) {
+        switch (command) {
             case '+':
                 result = ht.insert(value, 0);
                 break;
@@ -141,12 +178,11 @@ void run(std::istream &in, std::ostream &out) {
                 exit(1);
         }
         if (result) {
-            std::cout << "OK" << std::endl;
+            out << "OK" << std::endl;
         } else {
-            std::cout << "FAIL" << std::endl;
+            out << "FAIL" << std::endl;
         }
     }
-
 }
 
 int main() {
