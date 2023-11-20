@@ -33,10 +33,11 @@ private:
         Node(const Key &key, const Value &value) : key(key), value(value), status(2) {}
 
         Node() {
-            status = 0;
+            status = Node::empty;
         }
 
-        uint8_t status; // 0-empty 1-deleted 2-occupied
+        enum enum_status{empty, deleted, occupied};
+        enum_status status;
         Key key;
         Value value;
     };
@@ -52,12 +53,12 @@ private:
         capacity *= 2;
         arr = new Node[capacity];
         for (size_t i = 0; i < old_capacity; ++i) {
-            if (old_arr[i].status == 2) {
+            if (old_arr[i].status == Node::occupied) {
                 size_t hash = hasher(old_arr[i].key);
                 for (size_t j = 0;; ++j) {
                     hash = (hash + j*j) % capacity;
-                    if (arr[hash].status == 0) {
-                        arr[hash].status = 2;
+                    if (arr[hash].status == Node::empty) {
+                        arr[hash].status = Node::occupied;
                         arr[hash].key = old_arr[i].key;
                         arr[hash].value = old_arr[i].value;
                         break;
@@ -86,7 +87,7 @@ public:
         arr = new Node[capacity];
         for (size_t i = 0; i < capacity; ++i) {
             arr[i].status = table.arr[i].status;
-            if (arr[i].status == 2) {
+            if (arr[i].status == Node::occupied) {
                 arr[i].key = table.arr[i].key;
                 arr[i].value = table.arr[i].value;
             }
@@ -102,7 +103,7 @@ public:
             arr = new Node[capacity];
             for (size_t i = 0; i < capacity; ++i) {
                 arr[i].status = table.arr[i].status;
-                if (arr[i].status == 2) {
+                if (arr[i].status == Node::occupied) {
                     arr[i].key = table.arr[i].key;
                     arr[i].value = table.arr[i].value;
                 }
@@ -115,9 +116,9 @@ public:
         size_t hash = hasher(key);
         for (size_t i = 0;; ++i) {
             hash = (hash + i*i) % capacity;
-            if (arr[hash].status == 0) {
+            if (arr[hash].status == Node::empty) {
                 return false;
-            } else if (arr[hash].status == 2 && arr[hash].key == key) {
+            } else if (arr[hash].status == Node::occupied && arr[hash].key == key) {
                 return true;
             }
         }
@@ -133,8 +134,8 @@ public:
         size_t hash = hasher(key);
         for (size_t i = 0;; ++i) {
             hash = (hash + i*i) % capacity;
-            if (arr[hash].status == 0 || arr[hash].status == 1) {
-                arr[hash].status = 2;
+            if (arr[hash].status == Node::empty || arr[hash].status == Node::deleted) {
+                arr[hash].status = Node::occupied;
                 arr[hash].key = key;
                 arr[hash].value = value;
                 count++;
@@ -150,8 +151,8 @@ public:
         size_t hash = hasher(key);
         for (size_t i = 0;; ++i) {
             hash = (hash + i*i) % capacity;
-            if (arr[hash].status == 2 && arr[hash].key == key) {
-                arr[hash].status = 1;
+            if (arr[hash].status == Node::occupied && arr[hash].key == key) {
+                arr[hash].status = Node::deleted;
                 return true;
             }
         }
