@@ -16,13 +16,11 @@ public:
     struct Node {
         Node *left;
         Node *right;
-        Node *parent;
         Value value;
 
         Node(Value value) {
             left = nullptr;
             right = nullptr;
-            parent = nullptr;
             this->value = value;
         }
     };
@@ -61,7 +59,6 @@ public:
             new_queue.pop();
             if (current_old->left != nullptr) {
                 Node *new_left = new Node(current_old->left->value);
-                new_left->parent = current_new;
                 current_new->left = new_left;
 
                 old_queue.push(current_old->left);
@@ -69,7 +66,6 @@ public:
             }
             if (current_old->right != nullptr) {
                 Node *new_right = new Node(current_old->right->value);
-                new_right->parent = current_new;
                 current_new->right = new_right;
 
                 old_queue.push(current_old->right);
@@ -101,7 +97,6 @@ public:
             new_queue.pop();
             if (current_old->left != nullptr) {
                 Node *new_left = new Node(current_old->left->value);
-                new_left->parent = current_new;
                 current_new->left = new_left;
 
                 old_queue.push(current_old->left);
@@ -109,7 +104,6 @@ public:
             }
             if (current_old->right != nullptr) {
                 Node *new_right = new Node(current_old->right->value);
-                new_right->parent = current_new;
                 current_new->right = new_right;
 
                 old_queue.push(current_old->right);
@@ -131,7 +125,6 @@ public:
                 if (currentNode->left != nullptr) {
                     currentNode = currentNode->left;
                 } else {
-                    created->parent = currentNode;
                     currentNode->left = created;
                     break;
                 }
@@ -139,7 +132,6 @@ public:
                 if (currentNode->right != nullptr) {
                     currentNode = currentNode->right;
                 } else {
-                    created->parent = currentNode;
                     currentNode->right = created;
                     break;
                 }
