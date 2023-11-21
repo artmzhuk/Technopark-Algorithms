@@ -1,4 +1,6 @@
 #include <iostream>
+#include <cstdint>
+#include <queue>
 
 
 template<typename T>
@@ -28,8 +30,8 @@ class AVLTree {
         }
 
         ~Node() {
-            //delete left;
-            //delete right;
+            delete left;
+            delete right;
         }
     };
 
@@ -42,7 +44,7 @@ public:
     }
 
     ~AVLTree() {
-        //delete root;
+        delete root;
     }
 
     size_t size() const { return items_count; }
@@ -59,15 +61,101 @@ public:
         root = erase_aux(key, root);
     }
 
-    Value kth_element(int64_t index) {
+    Value kth_element(size_t index) {
         if (!root) {
             return 0;
         }
-        return kth_element_aux(root, index)->value;
+        Node *result = kth_element_aux(root, index);
+        if (result) {
+            return result->value;
+        } else {
+            return 0;
+        }
+    }
+
+    AVLTree(const AVLTree &old_tree) {
+        if (old_tree.root == nullptr) {
+            root = nullptr;
+            comp = old_tree.comp;
+            return;
+        }
+        std::queue<Node *> old_queue;
+        std::queue<Node *> new_queue;
+
+        root = new Node(old_tree.root->key, old_tree.root->value);
+        old_queue.push(old_tree.root);
+        new_queue.push(root);
+        while (!old_queue.empty()) {
+            Node *current_old = old_queue.front();
+            Node *current_new = new_queue.front();
+            current_new->weight = current_old->weight;
+            current_new->height = current_old->height;
+
+            old_queue.pop();
+            new_queue.pop();
+            if (current_old->left != nullptr) {
+                Node *new_left = new Node(current_old->left->key, current_old->left->value);
+                current_new->left = new_left;
+
+                old_queue.push(current_old->left);
+                new_queue.push(current_new->left);
+            }
+            if (current_old->right != nullptr) {
+                Node *new_right = new Node(current_old->right->key, current_old->right->value);
+                current_new->right = new_right;
+
+                old_queue.push(current_old->right);
+                new_queue.push(current_new->right);
+            }
+        }
+        comp = old_tree.comp;
+    }
+
+    AVLTree &operator=(const AVLTree &old_tree) {
+        delete this->root;
+        if (old_tree.root == nullptr) {
+            root = nullptr;
+            comp = old_tree.comp;
+            return *this;
+        }
+        std::queue<Node *> old_queue;
+        std::queue<Node *> new_queue;
+
+        root = new Node(old_tree.root->key, old_tree.root->value);
+        old_queue.push(old_tree.root);
+        new_queue.push(root);
+        while (!old_queue.empty()) {
+            Node *current_old = old_queue.front();
+            Node *current_new = new_queue.front();
+            current_new->weight = current_old->weight;
+            current_new->height = current_old->height;
+
+            old_queue.pop();
+            new_queue.pop();
+            if (current_old->left != nullptr) {
+                Node *new_left = new Node(current_old->left->key, current_old->left->value);
+                current_new->left = new_left;
+
+                old_queue.push(current_old->left);
+                new_queue.push(current_new->left);
+            }
+            if (current_old->right != nullptr) {
+                Node *new_right = new Node(current_old->left->key, current_old->right->value);
+                current_new->right = new_right;
+
+                old_queue.push(current_old->right);
+                new_queue.push(current_new->right);
+            }
+        }
+        this->comp = old_tree.comp;
+        return *this;
     }
 
 private:
     Node *kth_element_aux(Node *node, int64_t index) {
+        if (!node) {
+            return nullptr;
+        }
         int64_t delta = index - weight(node->left);
         if (delta == 0) {
             return node;
@@ -121,6 +209,8 @@ private:
             Node *left = node->left;
             Node *right = node->right;
 
+            node->left = nullptr;
+            node->right = nullptr;
             delete node;
             items_count--;
 
@@ -128,9 +218,9 @@ private:
                 return left;
             }
 
-            // В ДЗ ДЕЛАТЬ ОДНОЙ ФУНКЦИЕЙ find_and_remove_min_node
-            Node *min_node = find_min(right);
-            right = remove_min_node(right);
+            Node *min_node = nullptr;
+            Node **min_node_ptr = &min_node;
+            right = find_and_remove_min_node(right, min_node_ptr);
 
             min_node->left = left;
             min_node->right = right;
@@ -140,20 +230,13 @@ private:
         return balance(node);
     }
 
-    Node *remove_min_node(Node *node) {
+    Node *find_and_remove_min_node(Node *node, Node **min_node_ptr) {
         if (!node->left) {
+            *min_node_ptr = node;
             return node->right;
         }
-
-        node->left = remove_min_node(node->left);
+        node->left = find_and_remove_min_node(node->left, min_node_ptr);
         return balance(node);
-    }
-
-    Node *find_min(Node *node) {
-        if (!node->left) {
-            return node;
-        }
-        return find_min(node->left);
     }
 
     uint8_t height(Node *node) {
@@ -176,6 +259,13 @@ private:
 
     void fix_weight(Node *node) {
         node->weight = 1 + weight(node->left) + weight(node->right);
+    }
+
+    void fix_height_and_weight(Node *a, Node *b) {
+        fix_height(a);
+        fix_height(b);
+        fix_weight(a);
+        fix_weight(b);
     }
 
     int balance_factor(Node *node) {
@@ -204,19 +294,21 @@ private:
         return node;
     }
 
-    Node *rotate_left(Node *a) {
+    Node *rotate_left(Node *a) { //nodes are marked as per lectures
         Node *b = a->right;
         Node *c = b->left;
         a->right = c;
         b->left = a;
+        fix_height_and_weight(a, b);
         return b;
     }
 
-    Node *rotate_right(Node *a) {
+    Node *rotate_right(Node *a) { //nodes are marked as per lectures
         Node *b = a->left;
         Node *c = b->right;
         a->left = c;
         b->right = a;
+        fix_height_and_weight(a, b);
         return b;
     }
 
@@ -226,19 +318,47 @@ private:
 };
 
 void run(std::istream &in, std::ostream &out) {
-    AVLTree<int, int> tree;
-    tree.insert(12, 12);
-    tree.insert(8, 8);
-    tree.insert(18, 18);
-    tree.insert(5, 5);
-    tree.insert(11, 11);
-    tree.insert(17, 17);
-    tree.insert(4, 4);
-    for (int i = 0; i < 7; ++i) {
-        out << tree.kth_element(i) << " ";
+    AVLTree<int64_t, int64_t> tree;
+    size_t N;
+    in >> N;
+    for (size_t i = 0; i < N; ++i) {
+        int64_t number = 0;
+        size_t kth_index = 0;
+        in >> number >> kth_index;
+        if (number > 0) {
+            tree.insert(number, number);
+        } else {
+            tree.erase(std::llabs(number));
+        }
+        out << tree.kth_element(kth_index) << " ";
     }
 }
 
+void test(std::istream &in, std::ostream &out) {
+    AVLTree<int, int> tree;
+//    tree.insert(12, 12);
+//    tree.insert(8, 8);
+//    tree.insert(18, 18);
+//    tree.insert(5, 5);
+//    tree.insert(11, 11);
+//    tree.insert(17, 17);
+//    tree.insert(4, 4);
+//    for (int i = 0; i < tree.size(); ++i) {
+//        out << tree.kth_element(i) << " ";
+//    }
+    tree.insert(10, 1);
+    out << tree.kth_element(0) << " ";
+    tree.insert(20, 2);
+    out << tree.kth_element(0) << " ";
+    tree.insert(30, 3);
+    out << tree.kth_element(3);
+    AVLTree<int, int> tree1(tree);
+    AVLTree<int, int> tree2;
+    tree2.insert(5, 7);
+    tree2 = tree1;
+}
+
 int main() {
-    run(std::cin, std::cout);
+    test(std::cin, std::cout);
+    //run(std::cin, std::cout);
 }
