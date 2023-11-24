@@ -29,3 +29,9 @@ add_executable(module2_task2
         "module 2/task2.cpp")
 add_executable(module2_task3
         "module 2/task3.cpp")
+add_executable(rk2_1
+        "module 2/rk2_1.cpp")
+add_executable(rk2_2
+        "module 2/rk2_2.cpp")
+add_executable(rk2_3
+        "module 2/rk2_3.cpp")
