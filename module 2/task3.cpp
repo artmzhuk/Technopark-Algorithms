@@ -1,5 +1,13 @@
+/* Постройте B-дерево минимального порядка t и выведите его по слоям.
+ * В качестве ключа используются числа, лежащие в диапазоне 0..232 -1
+ * Требования:
+ * B-дерево должно быть реализовано в виде шаблонного класса.
+ * Решение должно поддерживать передачу функции сравнения снаружи
+*/
+
+#include <vector>
+#include <cassert>
 #include <iostream>
-#include <cstdint>
 #include <queue>
 
 
@@ -12,353 +20,171 @@ struct DefaultComparator {
     }
 };
 
-template<typename Key, typename Value, typename Comparator=DefaultComparator<Key> >
-class AVLTree {
+template<typename Key, typename Comparator = DefaultComparator<Key>>
+class BTree {
+public:
     struct Node {
-        Node *left;
-        Node *right;
-
-        Key key;
-        Value value;
-
-        int64_t weight;
-        uint8_t height;
-
-        Node(const Key &key, const Value &value) :
-                left(nullptr), right(nullptr),
-                key(key), value(value), height(1), weight(1) {
-        }
+        explicit Node(bool leaf) : leaf(leaf) {}
 
         ~Node() {
-            delete left;
-            delete right;
+            for (Node *child: children) {
+                delete child;
+            }
         }
+
+        bool leaf;
+        std::vector<Key> keys; //t-1, 2t-1, в корне от 1 до 2t-1
+        std::vector<Node *> children; // 2t
     };
 
-public:
-    AVLTree(Comparator comp = Comparator()) :
-            root(nullptr),
-            items_count(0),
-            comp(comp) {
-
+    BTree(size_t min_degree, Comparator comparator = Comparator()) : root(nullptr), t(min_degree) {
+        compare = comparator;
+        assert(min_degree >= 2);
     }
 
-    ~AVLTree() {
-        delete root;
+    ~BTree() {
+        if (root)
+            delete root;
     }
 
-    size_t size() const { return items_count; }
-
-    Value *find(const Key &key) {
-        return find_aux(key, root);
-    }
-
-    void insert(const Key &key, const Value &value) {
-        root = insert_aux(key, value, root);
-    }
-
-    void erase(const Key &key) {
-        root = erase_aux(key, root);
-    }
-
-    Value kth_element(size_t index) {
+    void insert(const Key &key) {
         if (!root) {
-            return 0;
+            root = new Node(true);
         }
-        Node *result = kth_element_aux(root, index);
-        if (result) {
-            return result->value;
-        } else {
-            return 0;
+        if (is_node_full(root)) {
+            Node *newRoot = new Node(false);
+            newRoot->children.push_back(root);
+            root = newRoot;
+            split(root, 0);
         }
+
+        insert_non_full(root, key);
     }
 
-    AVLTree(const AVLTree &old_tree) {
-        if (old_tree.root == nullptr) {
-            root = nullptr;
-            comp = old_tree.comp;
-            return;
-        }
-        std::queue<Node *> old_queue;
-        std::queue<Node *> new_queue;
-
-        root = new Node(old_tree.root->key, old_tree.root->value);
-        old_queue.push(old_tree.root);
-        new_queue.push(root);
-        while (!old_queue.empty()) {
-            Node *current_old = old_queue.front();
-            Node *current_new = new_queue.front();
-            current_new->weight = current_old->weight;
-            current_new->height = current_old->height;
-
-            old_queue.pop();
-            new_queue.pop();
-            if (current_old->left != nullptr) {
-                Node *new_left = new Node(current_old->left->key, current_old->left->value);
-                current_new->left = new_left;
-
-                old_queue.push(current_old->left);
-                new_queue.push(current_new->left);
-            }
-            if (current_old->right != nullptr) {
-                Node *new_right = new Node(current_old->right->key, current_old->right->value);
-                current_new->right = new_right;
-
-                old_queue.push(current_old->right);
-                new_queue.push(current_new->right);
-            }
-        }
-        comp = old_tree.comp;
+    bool find(const Key &key) {
+        return find_aux(root, key);
     }
 
-    AVLTree &operator=(const AVLTree &old_tree) {
-        delete this->root;
-        if (old_tree.root == nullptr) {
-            root = nullptr;
-            comp = old_tree.comp;
-            return *this;
-        }
-        std::queue<Node *> old_queue;
-        std::queue<Node *> new_queue;
-
-        root = new Node(old_tree.root->key, old_tree.root->value);
-        old_queue.push(old_tree.root);
-        new_queue.push(root);
-        while (!old_queue.empty()) {
-            Node *current_old = old_queue.front();
-            Node *current_new = new_queue.front();
-            current_new->weight = current_old->weight;
-            current_new->height = current_old->height;
-
-            old_queue.pop();
-            new_queue.pop();
-            if (current_old->left != nullptr) {
-                Node *new_left = new Node(current_old->left->key, current_old->left->value);
-                current_new->left = new_left;
-
-                old_queue.push(current_old->left);
-                new_queue.push(current_new->left);
+    std::vector<std::vector<Key>> getKeysByLayer() {
+        std::queue<Node *> nextLayer;
+        std::vector<std::vector<Key>> result;
+        nextLayer.push(root);
+        while (!nextLayer.empty()) {
+            std::queue<Node *> thisLayer;
+            thisLayer = nextLayer;
+            nextLayer = std::queue<Node *>(); // nextLayer is now empty
+            std::vector<Key> thisLayerVector;
+            while (!thisLayer.empty()) {
+                Node *popped = thisLayer.front();
+                thisLayer.pop();
+                for (auto i: popped->keys)
+                    thisLayerVector.push_back(i);
+                if (popped->children.size() != 0) {
+                    for (auto i: popped->children) {
+                        nextLayer.push(i);
+                    }
+                }
             }
-            if (current_old->right != nullptr) {
-                Node *new_right = new Node(current_old->left->key, current_old->right->value);
-                current_new->right = new_right;
-
-                old_queue.push(current_old->right);
-                new_queue.push(current_new->right);
-            }
+            result.push_back(thisLayerVector);
         }
-        this->comp = old_tree.comp;
-        return *this;
+        return result;
     }
 
 private:
-    Node *kth_element_aux(Node *node, int64_t index) {
-        if (!node) {
-            return nullptr;
+    bool is_node_full(Node *node) {
+        return node->keys.size() == 2 * t - 1;
+    }
+
+    bool find_aux(Node *node, const Key &key) {
+        int i = 0;
+        while (i < node->keys.size() && compare(key, node->keys[i]) >= 1)
+            i++;
+        if (i < node->keys.size() && compare(key, node->keys[i]) == 0)
+            return true;
+        else if (node->leaf)
+            return false;
+        else
+            return find_aux(node->children[i], key);
+    }
+
+    void split(Node *x, size_t index) {
+        Node *y = x->children[index];
+        Node *z = new Node(y->leaf);
+        z->keys.resize(t - 1);
+        for (size_t j = 0; j < t - 1; j++) {
+            z->keys[j] = y->keys[j + t];
         }
-        int64_t delta = index - weight(node->left);
-        if (delta == 0) {
-            return node;
-        } else if (delta < 0) {
-            return kth_element_aux(node->left, index);
+
+        if (!y->leaf) {
+            z->children.resize(t);
+            for (size_t j = 0; j < t; j++) {
+                z->children[j] = y->children[j + t];
+            }
+        }
+        x->children.resize(x->children.size() + 1);
+        for (long j = x->children.size() - 2; j >= (long) index + 1; j--) {
+            x->children[j + 1] = x->children[j];
+        }
+        x->children[index + 1] = z;
+        x->keys.resize(x->keys.size() + 1);
+        for (long j = x->keys.size() - 2; j >= (long) index; j--) {
+            x->keys[j + 1] = x->keys[j];
+        }
+        x->keys[index] = y->keys[t - 1];
+        y->keys.resize(t - 1);
+        if (!y->leaf)
+            y->children.resize(t);
+    }
+
+
+    void insert_non_full(Node *node, const Key &key) {
+        int pos = node->keys.size() - 1;
+        if (node->leaf) {
+            node->keys.resize(node->keys.size() + 1);
+            while (pos >= 0 && compare(key, node->keys[pos]) <= -1) {
+                node->keys[pos + 1] = node->keys[pos];
+                pos--;
+            }
+            node->keys[pos + 1] = key;
         } else {
-            return kth_element_aux(node->right, delta - 1);
-        }
-    }
-
-    Value *find_aux(const Key &key, Node *node) {
-        if (!node) {
-            return nullptr;
-        }
-        int cmp_res = comp(key, node->key);
-        if (cmp_res == -1) { //key < node->key
-            return find_aux(key, node->left);
-        } else if (cmp_res == 1) { //key > node->key
-            return find_aux(key, node->right);
-        }
-        //key == node->key
-        return &node->value;
-    }
-
-    Node *insert_aux(const Key &key, const Value &value, Node *node) {
-        if (!node) {
-            items_count++;
-            return new Node(key, value);
-        }
-        int cmp_res = comp(key, node->key);
-        if (cmp_res == -1) { //key < node->key
-            node->left = insert_aux(key, value, node->left);
-        } else if (cmp_res == 1) { //key > node->key
-            node->right = insert_aux(key, value, node->right);
-        }
-        //key == node->key
-        return balance(node);
-    }
-
-    Node *erase_aux(const Key &key, Node *node) {
-        if (!node) {
-            return nullptr;
-        }
-
-        int cmp_res = comp(key, node->key);
-        if (cmp_res == -1) { //key < node->key
-            node->left = erase_aux(key, node->left);
-        } else if (cmp_res == 1) { //key > node->key
-            node->right = erase_aux(key, node->right);
-        } else { //key == node->key
-            Node *left = node->left;
-            Node *right = node->right;
-
-            node->left = nullptr;
-            node->right = nullptr;
-            delete node;
-            items_count--;
-
-            if (!right) {
-                return left;
+            while (pos >= 0 && compare(key, node->keys[pos]) <= -1) {
+                pos--;
             }
 
-            Node *min_node = nullptr;
-            Node **min_node_ptr = &min_node;
-            right = find_and_remove_min_node(right, min_node_ptr);
-
-            min_node->left = left;
-            min_node->right = right;
-
-            return balance(min_node);
-        }
-        return balance(node);
-    }
-
-    Node *find_and_remove_min_node(Node *node, Node **min_node_ptr) {
-        if (!node->left) {
-            *min_node_ptr = node;
-            return node->right;
-        }
-        node->left = find_and_remove_min_node(node->left, min_node_ptr);
-        return balance(node);
-    }
-
-    uint8_t height(Node *node) {
-        if (!node) {
-            return 0;
-        }
-        return node->height;
-    }
-
-    int64_t weight(Node *node) {
-        if (!node) {
-            return 0;
-        }
-        return node->weight;
-    }
-
-    void fix_height(Node *node) {
-        node->height = std::max(height(node->left), height(node->right)) + 1;
-    }
-
-    void fix_weight(Node *node) {
-        node->weight = 1 + weight(node->left) + weight(node->right);
-    }
-
-    void fix_height_and_weight(Node *a, Node *b) {
-        fix_height(a);
-        fix_height(b);
-        fix_weight(a);
-        fix_weight(b);
-    }
-
-    int balance_factor(Node *node) {
-        return height(node->right) - height(node->left);
-    }
-
-    Node *balance(Node *node) {
-        fix_height(node);
-        fix_weight(node);
-
-        int bf = balance_factor(node);
-        if (bf == 2) {
-            if (balance_factor(node->right) < 0) {
-                node->right = rotate_right(node->right);
+            if (is_node_full(node->children[pos + 1])) {
+                split(node, pos + 1);
+                if (compare(key, node->keys[pos + 1]) >= 1) {
+                    pos++;
+                }
             }
-            return rotate_left(node);
+            insert_non_full(node->children[pos + 1], key);
         }
-
-        if (bf == -2) {
-            if (balance_factor(node->left) > 0) {
-                node->left = rotate_left(node->left);
-            }
-            return rotate_right(node);
-        }
-
-        return node;
     }
 
-    Node *rotate_left(Node *a) { //nodes are marked as per lectures
-        Node *b = a->right;
-        Node *c = b->left;
-        a->right = c;
-        b->left = a;
-        fix_height_and_weight(a, b);
-        return b;
-    }
-
-    Node *rotate_right(Node *a) { //nodes are marked as per lectures
-        Node *b = a->left;
-        Node *c = b->right;
-        a->left = c;
-        b->right = a;
-        fix_height_and_weight(a, b);
-        return b;
-    }
-
+    Comparator compare;
     Node *root;
-    size_t items_count;
-    Comparator comp;
+    size_t t; // minimum degree
+
 };
 
 void run(std::istream &in, std::ostream &out) {
-    AVLTree<int64_t, int64_t> tree;
-    size_t N;
-    in >> N;
-    for (size_t i = 0; i < N; ++i) {
-        int64_t number = 0;
-        size_t kth_index = 0;
-        in >> number >> kth_index;
-        if (number > 0) {
-            tree.insert(number, number);
-        } else {
-            tree.erase(std::llabs(number));
+    size_t t;
+    in >> t;
+    BTree<long> tree(t);
+    long value;
+    while (in >> value) {
+        tree.insert(value);
+    }
+    std::vector<std::vector<long>> result;
+    result = tree.getKeysByLayer();
+    for (auto i: result) {
+        for (auto j: i) {
+            out << j << " ";
         }
-        out << tree.kth_element(kth_index) << " ";
+        out << "\n";
     }
 }
 
-void test(std::istream &in, std::ostream &out) {
-    AVLTree<int, int> tree;
-//    tree.insert(12, 12);
-//    tree.insert(8, 8);
-//    tree.insert(18, 18);
-//    tree.insert(5, 5);
-//    tree.insert(11, 11);
-//    tree.insert(17, 17);
-//    tree.insert(4, 4);
-//    for (int i = 0; i < tree.size(); ++i) {
-//        out << tree.kth_element(i) << " ";
-//    }
-    tree.insert(10, 1);
-    out << tree.kth_element(0) << " ";
-    tree.insert(20, 2);
-    out << tree.kth_element(0) << " ";
-    tree.insert(30, 3);
-    out << tree.kth_element(3);
-    AVLTree<int, int> tree1(tree);
-    AVLTree<int, int> tree2;
-    tree2.insert(5, 7);
-    tree2 = tree1;
-}
-
 int main() {
-    test(std::cin, std::cout);
-    //run(std::cin, std::cout);
+    run(std::cin, std::cout);
 }
