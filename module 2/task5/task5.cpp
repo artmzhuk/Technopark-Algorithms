@@ -6,13 +6,12 @@
 #include <unordered_map>
 #include <queue>
 #include <stack>
-#include <cassert>
+#include <cstdint>
 
 #define interface struct
 typedef unsigned char byte;
 
 interface IInputStream {
-    // Возвращает false, если поток закончился
     virtual bool Read(byte &value) {
         if (current_pos >= buffer.size()) {
             return false;
@@ -23,7 +22,7 @@ interface IInputStream {
         }
     }
 
-    explicit IInputStream(std::string path) {
+    explicit IInputStream(const std::string &path) {
         std::ifstream infile(path, std::ios::binary);
         std::vector<byte> buffer1((std::istreambuf_iterator<char>(infile)),
                                   std::istreambuf_iterator<char>());
@@ -31,7 +30,7 @@ interface IInputStream {
         current_pos = 0;
     }
 
-    IInputStream(std::vector<byte> &input_vector) {
+    explicit IInputStream(std::vector<byte> &input_vector) {
         buffer = input_vector;
         current_pos = 0;
     }
@@ -47,17 +46,13 @@ interface IOutputStream {
     }
 
     std::vector<byte> buffer;
-    size_t current_pos;
 };
-
 
 
 //======================================
 class BitWriter {
 public:
-    BitWriter(IOutputStream &stream) : out(stream), pos(0), buf(0), totalBits(0) {
-
-    }
+    explicit BitWriter(IOutputStream &stream) : out(stream), pos(0), buf(0), totalBits(0) {}
 
     void WriteBit(byte value) {
         value = value & 1;
@@ -90,16 +85,15 @@ public:
 
 private:
     IOutputStream &out;
-
     size_t totalBits;
     int pos;
     byte buf;
-
 };
+
 
 class BitReader {
 public:
-    BitReader(IInputStream &stream) : in(stream), pos(0), buf(0) {}
+    explicit BitReader(IInputStream &stream) : in(stream), pos(0), buf(0) {}
 
     bool ReadBit(byte &value) {
         if (pos == 0) {
@@ -131,11 +125,10 @@ public:
 
 private:
     IInputStream &in;
-
     int pos;
     byte buf;
-
 };
+
 
 struct Node {
     byte value;
@@ -144,10 +137,20 @@ struct Node {
     Node *right;
 
     Node(byte value, size_t freq) : value(value), freq(freq), left(nullptr), right(nullptr) {}
+
+    ~Node() {
+        delete left;
+        delete right;
+    }
 };
 
-void printTree(Node* root){
-    if(root->left == nullptr && root->right == nullptr){
+union singleLetter {
+    std::uint64_t num_of_repeats;
+    byte ith_byte[8];
+};
+
+void printTree(Node *root) {
+    if (root->left == nullptr && root->right == nullptr) {
         std::cout << int(root->value) << " ";
         return;
     }
@@ -200,11 +203,6 @@ Node *constructTree(std::vector<int> &alphabet) {
         priorityQueue.push(current_node);
     }
     Node *root = priorityQueue.top();
-/*    if(root->left == nullptr && root->right == nullptr){
-        Node* new_root = new Node(0, root->freq);
-        new_root->right = root;
-        root = new_root;
-    }*/
     return root;
 }
 
@@ -248,44 +246,68 @@ byte countFreeBitsInTheEnd(std::vector<int> &alphabet, std::unordered_map<byte, 
 
 void writeData(BitWriter &bitWriter, std::vector<byte> &input_vector,
                std::unordered_map<byte, std::vector<byte>> &encode_table) {
-    for (size_t i = 0; i < input_vector.size(); ++i) {
-        std::vector<byte> this_bits(encode_table[input_vector[i]]);
-        for (size_t j = 0; j < this_bits.size(); ++j ) {
-            bitWriter.WriteBit(this_bits[j]);
+    for (unsigned char i: input_vector) {
+        std::vector<byte> this_bits(encode_table[i]);
+        for (unsigned char this_bit: this_bits) {
+            bitWriter.WriteBit(this_bit);
         }
     }
     bitWriter.flushRest();
 }
 
+void encodeOneLetterData(BitWriter &bitWriter, byte value, size_t letter_counter) {
+    bitWriter.WriteByte(0);
+    bitWriter.WriteByte(value);
+    singleLetter letter{};
+    letter.num_of_repeats = letter_counter;
+    int last_zero = 7;
+    for (; last_zero >= 0; --last_zero) {
+        if (letter.ith_byte[last_zero] != 0) {
+            last_zero++;
+            break;
+        }
+    }
+    for (size_t i = 0; i < last_zero; ++i) {
+        bitWriter.WriteByte(letter.ith_byte[i]);
+    }
+}
+
+void fillOffset(BitWriter &bitWriter, int num_of_occupied_end_bits) {
+    for (int i = 0; i < (8 - num_of_occupied_end_bits); ++i) {
+        bitWriter.WriteBit(0);
+    }
+    bitWriter.WriteBit(1);
+}
+
 void Encode(IInputStream &original, IOutputStream &compressed) {
     std::vector<byte> input_vector;
     getVectorFromInput(original, input_vector);
+    BitWriter bitWriter(compressed);
     if (input_vector.empty()) {
         return;
     }
     std::vector<int> alphabet(256, 0);
     int alphabet_size = countAlphabet(alphabet, input_vector);
     Node *root = constructTree(alphabet);
-    /*printTree(root);
-    std::cout << "\n";*/
     std::unordered_map<byte, std::vector<byte>> encode_table; // key -- initial; value -- encoded
     if (root->left == nullptr && root->right == nullptr) {
         encode_table[root->value].push_back(1);
+        encodeOneLetterData(bitWriter, root->value, alphabet[root->value]);
+        return;
     } else {
         fillTable(encode_table, root);
     }
-    BitWriter bitWriter(compressed);
     bitWriter.WriteByte(alphabet_size - 1);
     size_t num_of_bits_encoded_tree = 0;
     encodeTreeDfs(bitWriter, root, &num_of_bits_encoded_tree);
 
     byte occupied_bits_end = countFreeBitsInTheEnd(alphabet, encode_table);
     num_of_bits_encoded_tree += occupied_bits_end;
-    num_of_bits_encoded_tree %= 8;
-    occupied_bits_end = num_of_bits_encoded_tree;
-    bitWriter.WriteByte(occupied_bits_end);
+    num_of_bits_encoded_tree += 1;
+    occupied_bits_end = num_of_bits_encoded_tree % 8;
+    fillOffset(bitWriter, occupied_bits_end);
     writeData(bitWriter, input_vector, encode_table);
-
+    delete root;
 }
 
 Node *readAndConstructTree(BitReader &bitReader, const int alphabet_size) {
@@ -315,14 +337,11 @@ Node *readAndConstructTree(BitReader &bitReader, const int alphabet_size) {
     return root;
 }
 
-std::vector<byte> removeEndBits(BitReader &bitReader, byte occupied_bits_end) {
+std::vector<byte> make_bits_vector(BitReader &bitReader) {
     byte read_bit = 0;
     std::vector<byte> data;
     while (bitReader.ReadBit(read_bit)) {
         data.push_back(read_bit);
-    }
-    for (int i = 0; i < (8 - occupied_bits_end) % 8; i++) {
-        data.pop_back();
     }
     return data;
 }
@@ -341,6 +360,30 @@ void readData(Node *root, std::vector<byte> &bits, size_t &i, std::vector<byte> 
     }
 }
 
+void decodeSingleLetterData(BitReader &bitReader, IOutputStream &original) {
+    byte value = 0;
+    bitReader.ReadByte(value);
+    singleLetter letter{};
+    letter.num_of_repeats = 0;
+    for (unsigned char &i: letter.ith_byte) {
+        bool is_successful_read = bitReader.ReadByte(i);
+        if (!is_successful_read) {
+            break;
+        }
+    }
+    for (size_t i = 0; i < letter.num_of_repeats; ++i) {
+        original.Write(value);
+    }
+}
+
+void skipOffset(BitReader &bitReader) {
+    byte read = 0;
+    while(read != 1){
+        read = 0;
+        bitReader.ReadBit(read);
+    }
+}
+
 void Decode(IInputStream &compressed, IOutputStream &original) {
     int alphabet_size = 0;
     BitReader bitReader(compressed);
@@ -348,38 +391,30 @@ void Decode(IInputStream &compressed, IOutputStream &original) {
         return;
     }
     alphabet_size += 1;
-    Node *root = readAndConstructTree(bitReader, alphabet_size);
-    /*printTree(root);
-    std::cout << "\n";*/
-    byte occupied_bits_end = 0;
-    bitReader.ReadByte(occupied_bits_end);
-    std::vector<byte> data_bits(removeEndBits(bitReader, occupied_bits_end));
-
-    std::vector<byte> result;
-    if (root->left == nullptr && root->right == nullptr) {
-        for(size_t i = 0; i < data_bits.size(); ++i){
-            result.push_back(root->value);
-        }
-    } else {
-        size_t current_bit_tree = 0;
-        while (current_bit_tree != data_bits.size()) {
-            readData(root, data_bits, current_bit_tree, result);
-        }
+    if (alphabet_size == 1) {
+        decodeSingleLetterData(bitReader, original);
+        return;
     }
-
-
+    Node *root = readAndConstructTree(bitReader, alphabet_size);
+    skipOffset(bitReader);
+    std::vector<byte> data_bits(make_bits_vector(bitReader));
+    std::vector<byte> result;
+    size_t current_bit_tree = 0;
+    while (current_bit_tree != data_bits.size()) {
+        readData(root, data_bits, current_bit_tree, result);
+    }
     for (auto i: result) {
         original.Write(i);
     }
+    delete root;
 }
-
 
 
 int main() {
     //IInputStream input("/mnt/c/Users/artm/CLionProjects/Technopark-Algorithms/module 2/task5/171548.jpg");
-    //IInputStream input("/mnt/c/Users/artm/CLionProjects/Technopark-Algorithms/module 2/task5/test.txt");
+    IInputStream input("/mnt/c/Users/artm/CLionProjects/Technopark-Algorithms/module 2/task5/test.txt");
     //IInputStream input("/mnt/c/Users/artm/CLionProjects/Technopark-Algorithms/module 2/task5/artem.pdf");
-    IInputStream input("/mnt/c/Users/artm/CLionProjects/Technopark-Algorithms/module 2/task5/MSCEditor.exe");
+    //IInputStream input("/mnt/c/Users/artm/CLionProjects/Technopark-Algorithms/module 2/task5/MSCEditor.exe");
 
     IOutputStream output;
     Encode(input, output);
@@ -387,11 +422,16 @@ int main() {
     IInputStream input1(output.buffer);
     IOutputStream output1;
     Decode(input1, output1);
-    for(size_t i = 0; i < input.buffer.size(); i++){
-        if(output1.buffer[i] != input.buffer[i]){
+    for (size_t i = 0; i < input.buffer.size(); i++) {
+        if (output1.buffer[i] != input.buffer[i]) {
             std::cout << i << "\n";
             return 1;
         }
     }
+    size_t input_size = input.buffer.size();
+    size_t compressed_size = output.buffer.size();
+    std::cout << "Original size:" << input_size << "\n";
+    std::cout << "Compressed size:" << compressed_size << "\n";
+    std::cout << "Ratio:" << float(compressed_size) / float(input_size) << "\n";
     return 0;
 }
