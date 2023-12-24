@@ -41,3 +41,7 @@ add_executable(module2_task5
         "module 2/task5/task5.cpp")
 add_executable(Graph1
         "module 3/task1/ListGraph.cpp" "module 3/task1/MatrixGraph.cpp" "module 3/task1/ArcGraph.cpp" "module 3/task1/SetGraph.cpp" "module 3/task1/main.cpp" "module 3/task1/ArcGraph.h" "module 3/task1/ListGraph.h" "module 3/task1/MatrixGraph.h" "module 3/task1/SetGraph.h" "module 3/task1/IGraph.h")
+add_executable(module3_task2
+        "module 3/task2.cpp")
+add_executable(module3_task3
+        "module 3/task3.cpp")
