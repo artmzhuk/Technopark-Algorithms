@@ -1,301 +1,272 @@
 #include <iostream>
 #include <array>
-#include <vector>
-#include <map>
-#include <queue>
+#include <cassert>
 #include <unordered_map>
-#include <stack>
-#include <cstdint>
+#include <queue>
+#include <algorithm>
+#include <cstring>
+#include <valarray>
 
-static const size_t LINE_SIZE = 4;
-static const size_t FIELD_SIZE = LINE_SIZE * LINE_SIZE;
+const char FieldSize = 16;
+const std::array<char, FieldSize> finishField = {1, 2, 3, 4,
+                                                 5, 6, 7, 8,
+                                                 9, 10, 11, 12,
+                                                 13, 14, 15, 0};
 
-using FieldArray = std::array<uint8_t, FIELD_SIZE>;
-
-const FieldArray EMPTY_STATE = {
-        0, 0, 0, 0,//2+1 % 3 == 0
-        0, 0, 0, 0,//5+1 % 3 == 0
-        0, 0, 0, 0,//8
-        0, 0, 0, 0//8
-
-};
-
-const FieldArray GOAL_STATE = {
-        1, 2, 3,//0
-        4, 5, 6,//3
-        7, 8, 9, 10, 11, 12, 13, 14, 15, 0//6 % 3 == 0
-};
-
-
-class FieldState {
+class GameState {
 public:
-    FieldState(const FieldArray &arr) : state(arr) {
-        for (uint8_t i = 0; i < state.size(); ++i) {
-            if (state[i] == 0) {
-                zero_pos = i;
+    GameState(const std::array<char, FieldSize> &field)
+            : field(field) {
+        emptyPos = -1;
+        evristic = -1;
+        for (int i = 0; i < FieldSize; i++) {
+            if (field[i] == 0) {
+                emptyPos = i;
+            }
+        }
+        assert(emptyPos != -1);
+        CalcEvr();
+    }
+
+    bool IsComplete() const {
+        return field == finishField;
+    }
+
+    bool IsSolvable() const {
+        size_t zero_line = (emptyPos / 4) + 1;
+
+        return (getInvCount() + zero_line) % 2 == 0;
+    }
+
+    bool CanMoveLeft() const {
+        return emptyPos % 4 != 3;
+    }
+
+    bool CanMoveRight() const {
+        return emptyPos % 4 != 0;
+    }
+
+    bool CanMoveUp() const {
+        return emptyPos < 12;
+    }
+
+    bool CanMoveDown() const {
+        return emptyPos > 3;
+    }
+
+    int CalcEvr() {
+
+        int res = 0;
+        for (int i = 0; i < 16; ++i) {
+            int elem = field[i];
+            int x_target = (elem - 1) % 4;
+            int x_current = i % 4;
+            int y_target = (elem - 1) / 4;
+            int y_current = i / 4;
+            int hv = sqrt(((x_current - x_target) * (x_current - x_target)) +
+                          (y_current - y_target) * (y_current - y_target));
+
+            res += hv;
+        }
+        evristic = res;
+        return res;
+    }
+
+    GameState MoveLeft() {
+        assert(CanMoveLeft());
+
+        GameState newState(*this);
+        std::swap(newState.field[emptyPos], newState.field[emptyPos + 1]);
+        newState.emptyPos++;
+        CalcEvr();
+        return newState;
+    }
+
+    GameState MoveRight() {
+        assert(CanMoveRight());
+
+        GameState newState(*this);
+        std::swap(newState.field[emptyPos], newState.field[emptyPos - 1]);
+        newState.emptyPos--;
+        CalcEvr();
+        return newState;
+    }
+
+    GameState MoveUp() {
+        assert(CanMoveUp());
+
+        GameState newState(*this);
+        std::swap(newState.field[emptyPos], newState.field[emptyPos + 4]);
+        newState.emptyPos += 4;
+        CalcEvr();
+        return newState;
+    }
+
+    GameState MoveDown() {
+        assert(CanMoveDown());
+
+        GameState newState(*this);
+        std::swap(newState.field[emptyPos], newState.field[emptyPos - 4]);
+        newState.emptyPos -= 4;
+        CalcEvr();
+        return newState;
+    }
+
+    bool operator==(const GameState &other) const {
+        return field == other.field;
+    }
+
+    const int getEvr() const {
+        return evristic;
+    }
+
+    int evristic;
+private:
+
+    size_t getInvCount() const {
+        size_t inv_count = 0;
+        for (int i = 0; i < FieldSize - 1; i++) {
+            for (int j = i + 1; j < FieldSize; j++) {
+                if (field[i] > field[j] && field[i] && field[j])
+                    inv_count++;
+            }
+        }
+        return inv_count;
+    }
+
+    std::array<char, FieldSize> field;
+    char emptyPos;
+    friend struct GameStateHasher;
+
+    friend std::ostream &operator<<(std::ostream &out, const GameState &state);
+};
+
+struct GameStateHasher {
+public:
+    size_t operator()(const GameState &state) const {
+        size_t hash = 0;
+        std::memcpy(&hash, state.field.data(), sizeof(hash));
+        return hash;
+    }
+};
+
+std::ostream &operator<<(std::ostream &out, const GameState &state) {
+    for (int i = 0; i < 4; i++) {
+        for (int j = 0; j < 4; j++) {
+            out << static_cast<int>(state.field[i * 4 + j]) << ' ';
+        }
+        out << std::endl;
+    }
+    return out;
+}
+
+struct StateComp {
+    constexpr bool operator()(
+            GameState const &a,
+            GameState const &b)
+    const noexcept {
+        return a.evristic > b.evristic;
+    }
+};
+
+std::pair<int, std::string> GetSolution(const std::array<char, FieldSize> &field) {
+    GameState startState(field);
+    if (!startState.IsSolvable())
+        return std::make_pair(-1, "");
+
+    std::unordered_map<GameState, char, GameStateHasher> visited;
+    visited[startState] = 'S';
+
+    std::priority_queue<GameState, std::vector<GameState>, StateComp> queue;
+
+    queue.push(startState);
+
+    while (!queue.empty()) {
+        GameState state = queue.top();
+        queue.pop();
+
+        if (state.IsComplete())
+            break;
+
+        if (state.CanMoveLeft()) {
+            GameState newState = state.MoveLeft();
+            if (visited.find(newState) == visited.end()) {
+                visited[newState] = 'L';
+                queue.push(newState);
+            }
+        }
+        if (state.CanMoveRight()) {
+            GameState newState = state.MoveRight();
+            if (visited.find(newState) == visited.end()) {
+                visited[newState] = 'R';
+                queue.push(newState);
+            }
+        }
+        if (state.CanMoveUp()) {
+            GameState newState = state.MoveUp();
+            if (visited.find(newState) == visited.end()) {
+                visited[newState] = 'U';
+                queue.push(newState);
+            }
+        }
+        if (state.CanMoveDown()) {
+            GameState newState = state.MoveDown();
+            if (visited.find(newState) == visited.end()) {
+                visited[newState] = 'D';
+                queue.push(newState);
+            }
+        }
+    }
+
+    std::string path;
+    GameState state(finishField);
+    int counter = 0;
+    while (visited[state] != 'S') {
+        char move = visited[state];
+        counter++;
+        switch (move) {
+            case 'L': {
+                state = state.MoveRight();
+                path += 'L';
+                break;
+            }
+            case 'R': {
+                state = state.MoveLeft();
+                path += 'R';
+                break;
+            }
+            case 'D': {
+                state = state.MoveUp();
+                path += 'D';
+                break;
+            }
+            case 'U': {
+                state = state.MoveDown();
+                path += 'U';
                 break;
             }
         }
     }
+    std::reverse(path.begin(), path.end());
 
-    // FieldState(const FieldState& fs) : state(fs.state), zero_pos(fs.zero_pos) {
-    // }
-    FieldState(const FieldState &fs) = default;
-
-    bool operator==(const FieldState &r) const {
-        return state == r.state;
-    }
-
-    bool operator!=(const FieldState &r) const {
-        return state != r.state;
-    }
-
-    bool operator<(const FieldState &r) const {
-        return state < r.state;
-    }
-
-    std::vector<std::pair<FieldState, char>> GetNextVertices() const {
-        std::vector<std::pair<FieldState, char>> result;
-        result.reserve(4);
-
-        if (zero_pos >= LINE_SIZE) { //up
-            result.emplace_back(moveUp(), 'D');
-        }
-        if (zero_pos < (FIELD_SIZE - LINE_SIZE)) { //down
-            result.emplace_back(moveDown(), 'U');
-        }
-        if ((zero_pos + 1) % LINE_SIZE != 0) { //right
-            result.emplace_back(moveRight(), 'L');
-        }
-        if (zero_pos % LINE_SIZE != 0) { //left
-            result.emplace_back(moveLeft(), 'R');
-        }
-        return result;
-    }
-
-    void print() const {
-        for (int i = 0; i < state.size(); ++i) {
-            std::cout << (int) state[i] << " ";
-            if ((i + 1) % LINE_SIZE == 0) {
-                std::cout << std::endl;
-            }
-        }
-    }
-
-    bool validate() const {
-        int inversionCounter = 0;
-        for (int i = 0; i < FIELD_SIZE; ++i) {
-            if (state[i] == 0) {
-                continue;
-            }
-
-            int inversionCounterElem = 0;
-            for (int j = 0; j < i; ++j) {
-                if (state[j] > state[i]) {
-                    inversionCounterElem++;
-                }
-            }
-            inversionCounter += inversionCounterElem;
-        }
-        size_t zero_line = (zero_pos / LINE_SIZE) + 1;
-        //std::cout << "zero line: " << zero_line << "\n";
-        //std::cout << "inversions: " << inversionCounter << "\n";
-        zero_line += inversionCounter;
-        return zero_line % 2 == 0;
-    }
-
-    int CalcEvr(const FieldState &start) {
-        int res = 0;
-        for (int i = 0; i < FIELD_SIZE; ++i) {
-            int elem = state[i];
-            if (elem == 0) {
-                continue;
-            }
-            int x_target = (elem - 1) % LINE_SIZE;
-            int x_current = i % LINE_SIZE;
-            int y_target = (elem - 1) / LINE_SIZE;
-            int y_current = i / LINE_SIZE;
-            int hv = abs((x_current - x_target)) + abs(y_current - y_target);
-
-            /*int startPos = -1;
-            for (int j = 0; j < FIELD_SIZE; j++) {
-                if (start.state[i] == elem) {
-                    startPos = j;
-                    break;
-                }
-            }
-
-            int x_start = startPos % SIZE_WIDTH;
-            int y_start = startPos / SIZE_WIDTH;
-
-            int gv = abs(x_current - x_start) + abs(y_current - y_start);*/
-            res += hv;
-        }
-        return res;
-    }
-
-    FieldArray state;
-
-private:
-    FieldState moveUp() const {
-        FieldState fs(*this);
-        uint8_t new_zero_pos = fs.zero_pos - LINE_SIZE;
-        std::swap(fs.state[fs.zero_pos], fs.state[new_zero_pos]);
-        fs.zero_pos = new_zero_pos;
-        return fs;
-    }
-
-    FieldState moveDown() const {
-        FieldState fs(*this);
-        uint8_t new_zero_pos = fs.zero_pos + LINE_SIZE;
-        std::swap(fs.state[fs.zero_pos], fs.state[new_zero_pos]);
-        fs.zero_pos = new_zero_pos;
-
-        return fs;
-    }
-
-    FieldState moveRight() const {
-        FieldState fs(*this);
-        uint8_t new_zero_pos = fs.zero_pos + 1;
-        std::swap(fs.state[fs.zero_pos], fs.state[new_zero_pos]);
-        fs.zero_pos = new_zero_pos;
-
-        return fs;
-    }
-
-    FieldState moveLeft() const {
-        FieldState fs(*this);
-        uint8_t new_zero_pos = fs.zero_pos - 1;
-        std::swap(fs.state[fs.zero_pos], fs.state[new_zero_pos]);
-        fs.zero_pos = new_zero_pos;
-
-        return fs;
-    }
-
-    uint8_t zero_pos;
-
-};
-
-struct PairComp {
-    constexpr bool operator()(
-            std::pair<FieldState, int> const &a,
-            std::pair<FieldState, int> const &b)
-    const noexcept {
-        return a.second > b.second;
-    }
-};
-
-struct state_hash {
-    std::size_t operator()(FieldState const &v) const {
-        std::size_t res = 0;
-        for (int i = 0; i < FIELD_SIZE; ++i) {
-            size_t val = v.state[i];
-            res |= i << (val * 4);
-        }
-        return res;
-    }
-};
-
-int getDist(const FieldState &cur, const std::unordered_map<FieldState, int, state_hash> &dist) {
-    if (dist.find(cur) == dist.end()) {
-        return INT32_MAX;
-    } else {
-        return dist.find(cur)->second;
-    }
+    std::pair<int, std::string> pair;
+    pair.first = counter;
+    pair.second = path;
+    return pair;
 }
 
-void AStar(const FieldState &start) {
-    const FieldState goal(GOAL_STATE);
-    const FieldState empty(EMPTY_STATE);
-
-    std::unordered_map<FieldState, std::pair<FieldState, char>, state_hash> parents;
-    //std::map<FieldState, char> parent_transfer;
-    std::unordered_map<FieldState, int, state_hash> dist;
-    std::priority_queue<std::pair<FieldState, int>,
-            std::vector<std::pair<FieldState, int>>, PairComp> q;
-    parents.insert(std::make_pair(start, std::make_pair(empty, 'N')));
-    //parent_transfer.insert(std::make_pair(start, 'N'));
-    dist[start] = 0;
-    q.emplace(start, 0);
-
-    FieldState cur(EMPTY_STATE);
-    while (!q.empty()) {
-        cur = q.top().first;
-        int cur_priority = q.top().second;
-        q.pop();
-
-        if (cur == goal) {
-            break;
-        }
-
-        if (cur_priority >= getDist(cur, dist)) {
-            std::vector<std::pair<FieldState, char>> children = cur.GetNextVertices();
-            for (std::pair<FieldState, char> &st: children) {
-                if (getDist(st.first, dist) == INT32_MAX) {
-                    q.emplace(st.first, st.first.CalcEvr(start));
-                }
-                if (getDist(st.first, dist) > getDist(cur, dist) + 1) {
-                    dist[st.first] = getDist(cur, dist) + 1;
-                    parents.insert(std::make_pair(st.first, std::make_pair(cur, st.second)));
-                    //parent_transfer.insert(std::make_pair(st.first, st.second));
-                    q.emplace(st.first, st.first.CalcEvr(start) + dist[st.first]);
-                }
-
-/*            if (parents.find(st) == parents.end()) {
-                parents.insert(std::make_pair(st, cur));
-                q.push(st);
-            }*/
-            }
-        }
-
+void run(std::istream &in, std::ostream &out) {
+    std::array<char, FieldSize> field;
+    for (int i = 0; i < 16; ++i) {
+        int buf = 0;
+        in >> buf;
+        field[i] = buf;
     }
-    int steps_count = 0;
-    std::stack<char> stack;
-    if (cur == goal) {
-        while (cur != empty) {
-            steps_count++;
-            //cur.print();
-            auto it = parents.find(cur);
-            stack.push(it->second.second);
-            cur = it->second.first;
-            //std::cout << "-------------------" << std::endl;
-        }
-        //std::cout << "Solution found, steps_count=" << steps_count << std::endl;
-        std::cout << steps_count - 1 << "\n";
-        while (!stack.empty()) {
-            if (stack.top() != 'N')
-                std::cout << stack.top();
-            stack.pop();
-        }
-    } else {
-        std::cout << "-1\n";
-        //std::cout << "Solution NOT found, vertices count=" << parents.size() << std::endl;
-    }
+    std::pair<int, std::string> solution = GetSolution(field);
+    out << solution.first << "\n" << solution.second;
 }
 
 int main() {
-/*    FieldState start({
-                             1, 2, 3, 4,
-                             0, 5, 6, 8,
-                             9, 10, 7, 11,
-                             13, 14, 15, 12
-                     });*/
-    FieldArray arr;
-    for (int i = 0; i < FIELD_SIZE; ++i) {
-        int buf = 0;
-        std::cin >> buf;
-        arr[i] = buf;
-    }
-    FieldState start(arr);
-
-    if (start.validate()) {
-        AStar(start);
-    } else {
-        std::cout << "-1\n";
-        return 0;
-    }
-
-
-    //bfs(start);
-
+    run(std::cin, std::cout);
+    return 0;
 }
